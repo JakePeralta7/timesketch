@@ -18,6 +18,7 @@ Timesketch container. Depending on your provider, you will need:
 *  **Vertex AI:** `google-cloud-aiplatform`
 *  **AI Studio:** `google-generativeai`
 *  **Sec-Gemini:** `sec_gemini`
+*  **OpenAI:** `openai`
 
 There are two ways to install these dependencies:
 
@@ -30,7 +31,7 @@ ensures the libraries persist across container restarts and upgrades.
 
     ```
     docker build \
-      --build-arg EXTRA_PIP_PACKAGES="google-cloud-aiplatform google-generativeai sec_gemini" \
+      --build-arg EXTRA_PIP_PACKAGES="google-cloud-aiplatform google-generativeai sec_gemini openai" \
       -t timesketch:ai-enabled .
     ```
 
@@ -53,6 +54,10 @@ sudo docker exec timesketch-worker pip install google-cloud-aiplatform==1.70.0
 # For AI Studio
 sudo docker exec timesketch-web pip install google-generativeai
 sudo docker exec timesketch-worker pip install google-generativeai
+
+# For OpenAI
+sudo docker exec timesketch-web pip install openai
+sudo docker exec timesketch-worker pip install openai
 ```
 
 ## LLM Provider Configuration
@@ -95,6 +100,17 @@ LLM_PROVIDER_CONFIGS = {
     #     * $ sudo docker exec timesketch-web pip list | grep google-generativeai
     #     * You can install it manually using:
     #       $ sudo docker exec timesketch-web pip install google-generativeai==0.8.4
+    # - openai: OpenAI API (API key). Get API key from OpenAI website.
+    #   To use the OpenAI provider you need to:
+    #   1. Obtain an API key from https://platform.openai.com/api-keys
+    #   2. Verify your instance has the `openai` library installed:
+    #     * $ sudo docker exec timesketch-web pip list | grep openai
+    #     * You can install it manually using:
+    #       $ sudo docker exec timesketch-web pip install openai
+    #   3. (Optional) For custom OpenAI-compatible endpoints (e.g., Azure OpenAI), 
+    #      specify the `base_url` parameter in the configuration.
+    #
+    #   IMPORTANT: API keys must be kept secret. Never commit them to version control.
     'nl2q': {
         'vertexai': {
             'model': 'gemini-2.0-flash-001',
@@ -108,9 +124,10 @@ LLM_PROVIDER_CONFIGS = {
         },
     },
     'default': {
-        'ollama': {
-             'server_url': 'http://localhost:11434',
-             'model': 'gemma2-2b-it',
+        'openai': {
+             'api_key': '', # Required - Get from https://platform.openai.com/api-keys
+             'model': 'gpt-4o-mini', # or 'gpt-4o', 'gpt-3.5-turbo', etc.
+             # Optional: 'base_url': 'https://api.openai.com/v1',  # For custom endpoints
         },
     }
 }

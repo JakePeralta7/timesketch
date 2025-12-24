@@ -18,3 +18,4 @@ from timesketch.lib.llms.providers import vertexai
 from timesketch.lib.llms.providers import aistudio
 from timesketch.lib.llms.providers import secgemini_log_analyzer_agent
 from timesketch.lib.llms.providers.contrib import azureai
+from timesketch.lib.llms.providers.contrib import openai
