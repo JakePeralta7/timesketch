@@ -15,11 +15,17 @@
 
 import json
 from typing import Optional, Any, Union
-import requests
 from timesketch.lib.llms.providers import interface, manager
 
+# Check if the required dependencies are installed.
+has_required_deps = True
+try:
+    from openai import OpenAI as OpenAIClient
+    from openai import OpenAIError, APIError, APITimeoutError, APIConnectionError
+except ImportError:
+    has_required_deps = False
+
 # Default configuration values
-DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_TIMEOUT = 60
 
 
@@ -41,18 +47,35 @@ class OpenAI(interface.LLMProvider):
 
         Raises:
             ValueError: If required configuration keys (api_key, model)
-                are missing.
+                are missing or if the openai package is not installed.
         """
         super().__init__(config, **kwargs)
+        
+        if not has_required_deps:
+            raise ValueError(
+                "OpenAI provider requires the 'openai' package. "
+                "Install it with: pip install openai"
+            )
+        
         self.api_key = self.config.get("api_key")
         self.model = self.config.get("model")
-        self.base_url = self.config.get("base_url", DEFAULT_BASE_URL)
-        self.timeout = self.config.get("timeout", DEFAULT_TIMEOUT)
+        base_url = self.config.get("base_url")
+        timeout = self.config.get("timeout", DEFAULT_TIMEOUT)
         
         if not self.api_key:
             raise ValueError("api_key is required for OpenAI provider")
         if not self.model:
             raise ValueError("model is required for OpenAI provider")
+        
+        # Initialize OpenAI client
+        client_kwargs = {
+            "api_key": self.api_key,
+            "timeout": timeout,
+        }
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        
+        self.client = OpenAIClient(**client_kwargs)
 
     def generate(
         self, prompt: str, response_schema: Optional[dict] = None
@@ -71,13 +94,8 @@ class OpenAI(interface.LLMProvider):
         Raises:
             ValueError: If the request fails or JSON parsing fails.
         """
-        url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
-        
-        data = {
+        # Prepare request parameters
+        create_kwargs = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             # OpenAI uses 'max_tokens', but we use 'max_output_tokens' for consistency
@@ -93,24 +111,23 @@ class OpenAI(interface.LLMProvider):
 
         # Add response format for structured output if schema is provided
         if response_schema:
-            data["response_format"] = {"type": "json_object"}
+            create_kwargs["response_format"] = {"type": "json_object"}
 
-        response_json = None
         try:
-            response = requests.post(
-                url, headers=headers, json=data, timeout=self.timeout
-            )
-            response.raise_for_status()
-            response_json = response.json()
-            response_data = response_json["choices"][0]["message"]["content"]
-        except requests.exceptions.RequestException as error:
+            response = self.client.chat.completions.create(**create_kwargs)
+            response_data = response.choices[0].message.content
+        except APITimeoutError as error:
+            raise ValueError(f"Request timed out: {error}") from error
+        except (APIConnectionError, APIError) as error:
             raise ValueError(f"Error making request: {error}") from error
-        except (KeyError, IndexError) as e:
+        except (AttributeError, IndexError, KeyError) as e:
             # Don't expose full response in error to avoid leaking sensitive data
             raise ValueError(
                 "Unexpected response structure from OpenAI API. "
                 "Please check your model and API configuration."
             ) from e
+        except OpenAIError as error:
+            raise ValueError(f"OpenAI API error: {error}") from error
 
         if response_schema:
             try:

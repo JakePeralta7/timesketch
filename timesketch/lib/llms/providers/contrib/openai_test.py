@@ -19,19 +19,19 @@ from unittest import mock
 from timesketch.lib.llms.providers.contrib.openai import OpenAI
 
 
-class MockResponse:
-    """Mock HTTP response."""
+class MockChoice:
+    """Mock OpenAI choice."""
+    
+    def __init__(self, content):
+        self.message = mock.Mock()
+        self.message.content = content
 
-    def __init__(self, json_data, status_code):
-        self.json_data = json_data
-        self.status_code = status_code
 
-    def json(self):
-        return self.json_data
-
-    def raise_for_status(self):
-        if self.status_code != 200:
-            raise Exception(f"HTTP {self.status_code}")
+class MockChatCompletion:
+    """Mock OpenAI chat completion response."""
+    
+    def __init__(self, content):
+        self.choices = [MockChoice(content)]
 
 
 class TestOpenAI(unittest.TestCase):
@@ -57,7 +57,7 @@ class TestOpenAI(unittest.TestCase):
         provider = OpenAI(config)
         self.assertEqual(provider.api_key, "test-key")
         self.assertEqual(provider.model, "gpt-4")
-        self.assertEqual(provider.base_url, "https://api.openai.com/v1")
+        self.assertIsNotNone(provider.client)
 
     def test_init_custom_base_url(self):
         """Test initialization with custom base_url."""
@@ -67,102 +67,104 @@ class TestOpenAI(unittest.TestCase):
             "base_url": "https://custom.openai.com",
         }
         provider = OpenAI(config)
-        self.assertEqual(provider.base_url, "https://custom.openai.com")
+        # Check that the client was initialized with custom base_url
+        # OpenAI client normalizes base_url with trailing slash
+        self.assertIn("custom.openai.com", str(provider.client.base_url))
 
-    @mock.patch("timesketch.lib.llms.providers.contrib.openai.requests.post")
-    def test_generate_text(self, mock_post):
+    def test_generate_text(self):
         """Test text generation."""
-        mock_response = MockResponse(
-            {
-                "choices": [
-                    {"message": {"content": "This is a test response"}}
-                ]
-            },
-            200,
-        )
-        mock_post.return_value = mock_response
-
         config = {"api_key": "test-key", "model": "gpt-4"}
         provider = OpenAI(config)
-        result = provider.generate("Test prompt")
-
-        self.assertEqual(result, "This is a test response")
-        mock_post.assert_called_once()
         
-        # Verify the request parameters
-        call_args = mock_post.call_args
-        self.assertIn("https://api.openai.com/v1/chat/completions", call_args[0])
-        self.assertEqual(call_args[1]["headers"]["Authorization"], "Bearer test-key")
+        # Mock the client's chat.completions.create method
+        mock_response = MockChatCompletion("This is a test response")
+        provider.client.chat.completions.create = mock.Mock(return_value=mock_response)
+        
+        result = provider.generate("Test prompt")
+        
+        self.assertEqual(result, "This is a test response")
+        provider.client.chat.completions.create.assert_called_once()
+        
+        # Verify the call parameters
+        call_kwargs = provider.client.chat.completions.create.call_args[1]
+        self.assertEqual(call_kwargs["model"], "gpt-4")
+        self.assertEqual(call_kwargs["messages"], [{"role": "user", "content": "Test prompt"}])
 
-    @mock.patch("timesketch.lib.llms.providers.contrib.openai.requests.post")
-    def test_generate_with_json_schema(self, mock_post):
+    def test_generate_with_json_schema(self):
         """Test generation with JSON schema."""
-        mock_response = MockResponse(
-            {
-                "choices": [
-                    {"message": {"content": '{"answer": "test answer"}'}}
-                ]
-            },
-            200,
-        )
-        mock_post.return_value = mock_response
-
         config = {"api_key": "test-key", "model": "gpt-4"}
         provider = OpenAI(config)
+        
+        # Mock the client's chat.completions.create method
+        mock_response = MockChatCompletion('{"answer": "test answer"}')
+        provider.client.chat.completions.create = mock.Mock(return_value=mock_response)
+        
         schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
         result = provider.generate("Test prompt", response_schema=schema)
-
+        
         self.assertEqual(result, {"answer": "test answer"})
         
         # Verify that response_format was set
-        call_args = mock_post.call_args
-        self.assertEqual(
-            call_args[1]["json"]["response_format"], {"type": "json_object"}
-        )
+        call_kwargs = provider.client.chat.completions.create.call_args[1]
+        self.assertEqual(call_kwargs["response_format"], {"type": "json_object"})
 
-    @mock.patch("timesketch.lib.llms.providers.contrib.openai.requests.post")
-    def test_generate_request_error(self, mock_post):
+    def test_generate_request_error(self):
         """Test handling of request errors."""
-        import requests
-        mock_post.side_effect = requests.exceptions.RequestException("Network error")
-
+        from openai import APIConnectionError
+        
         config = {"api_key": "test-key", "model": "gpt-4"}
         provider = OpenAI(config)
-
+        
+        # Mock the client to raise an error
+        provider.client.chat.completions.create = mock.Mock(
+            side_effect=APIConnectionError(request=mock.Mock())
+        )
+        
         with self.assertRaises(ValueError) as context:
             provider.generate("Test prompt")
         self.assertIn("Error making request", str(context.exception))
 
-    @mock.patch("timesketch.lib.llms.providers.contrib.openai.requests.post")
-    def test_generate_invalid_response_structure(self, mock_post):
-        """Test handling of invalid response structure."""
-        mock_response = MockResponse({"invalid": "structure"}, 200)
-        mock_post.return_value = mock_response
-
+    def test_generate_timeout_error(self):
+        """Test handling of timeout errors."""
+        from openai import APITimeoutError
+        
         config = {"api_key": "test-key", "model": "gpt-4"}
         provider = OpenAI(config)
+        
+        # Mock the client to raise a timeout error
+        provider.client.chat.completions.create = mock.Mock(
+            side_effect=APITimeoutError(request=mock.Mock())
+        )
+        
+        with self.assertRaises(ValueError) as context:
+            provider.generate("Test prompt")
+        self.assertIn("Request timed out", str(context.exception))
 
+    def test_generate_invalid_response_structure(self):
+        """Test handling of invalid response structure."""
+        config = {"api_key": "test-key", "model": "gpt-4"}
+        provider = OpenAI(config)
+        
+        # Mock the client to return invalid structure
+        mock_response = mock.Mock()
+        mock_response.choices = []  # Empty choices list
+        provider.client.chat.completions.create = mock.Mock(return_value=mock_response)
+        
         with self.assertRaises(ValueError) as context:
             provider.generate("Test prompt")
         self.assertIn("Unexpected response structure", str(context.exception))
 
-    @mock.patch("timesketch.lib.llms.providers.contrib.openai.requests.post")
-    def test_generate_json_parse_error(self, mock_post):
+    def test_generate_json_parse_error(self):
         """Test handling of JSON parsing errors."""
-        mock_response = MockResponse(
-            {
-                "choices": [
-                    {"message": {"content": "not valid json"}}
-                ]
-            },
-            200,
-        )
-        mock_post.return_value = mock_response
-
         config = {"api_key": "test-key", "model": "gpt-4"}
         provider = OpenAI(config)
+        
+        # Mock the client to return invalid JSON
+        mock_response = MockChatCompletion("not valid json")
+        provider.client.chat.completions.create = mock.Mock(return_value=mock_response)
+        
         schema = {"type": "object"}
-
+        
         with self.assertRaises(ValueError) as context:
             provider.generate("Test prompt", response_schema=schema)
         self.assertIn("Error JSON parsing response", str(context.exception))
