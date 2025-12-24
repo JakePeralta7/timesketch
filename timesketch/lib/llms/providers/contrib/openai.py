@@ -98,14 +98,15 @@ class OpenAI(interface.LLMProvider):
                 url, headers=headers, json=data, timeout=self.timeout
             )
             response.raise_for_status()
-            response_data = response.json()["choices"][0]["message"]["content"]
+            response_json = response.json()
+            response_data = response_json["choices"][0]["message"]["content"]
         except requests.exceptions.Timeout as error:
             raise ValueError(f"Request timed out: {error}") from error
         except requests.exceptions.RequestException as error:
             raise ValueError(f"Error making request: {error}") from error
         except (KeyError, IndexError) as e:
             raise ValueError(
-                f"Unexpected response structure from OpenAI API: {response.json()}"
+                f"Unexpected response structure from OpenAI API: {response_json}"
             ) from e
 
         if response_schema:
