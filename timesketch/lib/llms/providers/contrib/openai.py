@@ -80,6 +80,8 @@ class OpenAI(interface.LLMProvider):
         data = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
+            # OpenAI uses 'max_tokens', but we use 'max_output_tokens' for consistency
+            # with other LLM providers in Timesketch
             "max_tokens": self.config.get(
                 "max_output_tokens", interface.DEFAULT_MAX_OUTPUT_TOKENS
             ),
@@ -104,16 +106,24 @@ class OpenAI(interface.LLMProvider):
         except requests.exceptions.RequestException as error:
             raise ValueError(f"Error making request: {error}") from error
         except (KeyError, IndexError) as e:
+            # Don't expose full response in error to avoid leaking sensitive data
             raise ValueError(
-                f"Unexpected response structure from OpenAI API: {response_json}"
+                "Unexpected response structure from OpenAI API. "
+                "Please check your model and API configuration."
             ) from e
 
         if response_schema:
             try:
                 return json.loads(response_data)
             except json.JSONDecodeError as error:
+                # Truncate response data to avoid exposing sensitive content
+                truncated = (
+                    response_data[:100] + "..."
+                    if len(response_data) > 100
+                    else response_data
+                )
                 raise ValueError(
-                    f"Error JSON parsing text: {response_data}: {error}"
+                    f"Error JSON parsing response (first 100 chars): {truncated}"
                 ) from error
 
         return response_data

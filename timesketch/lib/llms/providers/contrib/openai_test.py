@@ -165,7 +165,7 @@ class TestOpenAI(unittest.TestCase):
 
         with self.assertRaises(ValueError) as context:
             provider.generate("Test prompt", response_schema=schema)
-        self.assertIn("Error JSON parsing text", str(context.exception))
+        self.assertIn("Error JSON parsing response", str(context.exception))
 
 
 if __name__ == "__main__":
