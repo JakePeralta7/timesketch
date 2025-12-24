@@ -125,7 +125,7 @@ LLM_PROVIDER_CONFIGS = {
     },
     'default': {
         'openai': {
-             'api_key': '', # Required - Get from https://platform.openai.com/api-keys
+             'api_key': 'sk-your-api-key-here', # Required - Get from https://platform.openai.com/api-keys
              'model': 'gpt-4o-mini', # or 'gpt-4o', 'gpt-3.5-turbo', etc.
              # Optional: 'base_url': 'https://api.openai.com/v1',  # For custom endpoints
         },

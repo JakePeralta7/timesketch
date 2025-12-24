@@ -93,6 +93,7 @@ class OpenAI(interface.LLMProvider):
         if response_schema:
             data["response_format"] = {"type": "json_object"}
 
+        response_json = None
         try:
             response = requests.post(
                 url, headers=headers, json=data, timeout=self.timeout
@@ -100,8 +101,6 @@ class OpenAI(interface.LLMProvider):
             response.raise_for_status()
             response_json = response.json()
             response_data = response_json["choices"][0]["message"]["content"]
-        except requests.exceptions.Timeout as error:
-            raise ValueError(f"Request timed out: {error}") from error
         except requests.exceptions.RequestException as error:
             raise ValueError(f"Error making request: {error}") from error
         except (KeyError, IndexError) as e:
