@@ -46,7 +46,6 @@ class OpenAI(interface.LLMProvider):
         
         self.api_key = self.config.get("api_key")
         self.model = self.config.get("model")
-        base_url = self.config.get("base_url")
         timeout = self.config.get("timeout", DEFAULT_TIMEOUT)
         
         if not self.api_key:
@@ -55,14 +54,10 @@ class OpenAI(interface.LLMProvider):
             raise ValueError("model is required for OpenAI provider")
         
         # Initialize OpenAI client
-        client_kwargs = {
-            "api_key": self.api_key,
-            "timeout": timeout,
-        }
-        if base_url:
-            client_kwargs["base_url"] = base_url
-        
-        self.client = OpenAIClient(**client_kwargs)
+        self.client = OpenAIClient(
+            api_key=self.api_key,
+            timeout=timeout,
+        )
 
     def generate(
         self, prompt: str, response_schema: Optional[dict] = None
