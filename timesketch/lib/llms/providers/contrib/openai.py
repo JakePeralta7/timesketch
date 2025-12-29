@@ -82,7 +82,7 @@ class OpenAI(interface.LLMProvider):
             "messages": [{"role": "user", "content": prompt}],
             # OpenAI uses 'max_tokens', but we use 'max_output_tokens' for consistency
             # with other LLM providers in Timesketch
-            "max_tokens": self.config.get(
+            "max_completion_tokens": self.config.get(
                 "max_output_tokens", interface.DEFAULT_MAX_OUTPUT_TOKENS
             ),
             "temperature": self.config.get(
