@@ -91,10 +91,6 @@ class OpenAI(interface.LLMProvider):
             "top_p": self.config.get("top_p", interface.DEFAULT_TOP_P),
         }
 
-        # Add response format for structured output if schema is provided
-        if response_schema:
-            create_kwargs["response_format"] = {"type": "json_object"}
-
         try:
             response = self.client.chat.completions.create(**create_kwargs)
             response_data = response.choices[0].message.content
@@ -110,20 +106,6 @@ class OpenAI(interface.LLMProvider):
             ) from e
         except OpenAIError as error:
             raise ValueError(f"OpenAI API error: {error}") from error
-
-        if response_schema:
-            try:
-                return json.loads(response_data)
-            except json.JSONDecodeError as error:
-                # Truncate response data to avoid exposing sensitive content
-                truncated = (
-                    response_data[:100] + "..."
-                    if len(response_data) > 100
-                    else response_data
-                )
-                raise ValueError(
-                    f"Error JSON parsing response (first 100 chars): {truncated}"
-                ) from error
 
         return response_data
 
